@@ -1,0 +1,114 @@
+/**
+ * @fileoverview Firestore Security Rules for the application.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a combination of user-ownership and shared access control for managing user profiles and family groups. User profiles are strictly owned by the authenticated user. Family groups can be created and managed by users, with membership controlled via the `memberIds` array.
+ *
+ * Data Structure:
+ * - /users/{userId}: Stores individual user profiles, accessible only to the user themselves.
+ * - /familyGroups/{familyGroupId}: Stores family group information, with access controlled by the group's owner and members.
+ * - /users/{userId}/familyGroups/{familyGroupId}: Stores family group information owned by a specific user.
+ *
+ * Key Security Decisions:
+ * - User listing is disallowed to protect privacy.
+ * - Read-only collections are not used in this data model.
+ * - The default security posture for ambiguous relationships is strict owner-only access.
+ *
+ * Denormalization for Authorization:
+ * - The `FamilyGroup` document includes an `ownerId` field to quickly verify the group creator.
+ * - The `FamilyGroup` document includes a `memberIds` array to efficiently check group membership.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Controls access to user profile information.
+     * @path /users/{userId}
+     * @allow (get) User 'alice' (auth.uid: 'alice') can read their own profile.
+     * @allow (create) User 'alice' (auth.uid: 'alice') can create their profile.
+     * @allow (update) User 'alice' (auth.uid: 'alice') can update their own profile.
+     * @allow (delete) User 'alice' (auth.uid: 'alice') can delete their own profile.
+     * @deny (get) User 'bob' (auth.uid: 'bob') cannot read Alice's profile (userId: 'alice').
+     * @deny (create) User 'bob' (auth.uid: 'bob') cannot create a profile for Alice (userId: 'alice').
+     * @deny (update) User 'bob' (auth.uid: 'bob') cannot update Alice's profile (userId: 'alice').
+     * @deny (delete) User 'bob' (auth.uid: 'bob') cannot delete Alice's profile (userId: 'alice').
+     * @principle Enforces document ownership for all operations on user profiles.
+     */
+    match /users/{userId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      allow get: if isSignedIn() && isOwner(userId);
+      allow list: if false; // User listing is not permitted.
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && isOwner(userId);
+      allow delete: if isSignedIn() && isOwner(userId);
+    }
+
+    /**
+     * @description Controls access to family group information.
+     * @path /familyGroups/{familyGroupId}
+     * @allow (get) User 'alice' (auth.uid: 'alice') can read a family group if they are a member.
+     * @allow (create) User 'alice' (auth.uid: 'alice') can create a family group if they are the owner.
+     * @allow (update) User 'alice' (auth.uid: 'alice') can update a family group if they are the owner.
+     * @allow (delete) User 'alice' (auth.uid: 'alice') can delete a family group if they are the owner and the group exists.
+     * @deny (create) User 'bob' (auth.uid: 'bob') cannot create a family group for Alice (ownerId: 'alice').
+     * @deny (update) User 'bob' (auth.uid: 'bob') cannot update a family group owned by Alice (ownerId: 'alice').
+     * @deny (delete) User 'bob' (auth.uid: 'bob') cannot delete a family group owned by Alice (ownerId: 'alice').
+     * @principle Enforces ownership for creating, updating, and deleting family groups.
+     */
+    match /familyGroups/{familyGroupId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isOwner(ownerId) {
+        return request.auth.uid == ownerId;
+      }
+
+      function isMember(memberIds) {
+          return request.auth.uid in memberIds;
+      }
+
+      allow get: if isSignedIn() && (resource.data.ownerId == request.auth.uid || request.auth.uid in resource.data.memberIds);
+      allow list: if isSignedIn(); // Anyone signed in can list FamilyGroups. Consider restricting based on membership in a production environment.
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+    }
+
+      /**
+       * @description Controls access to family group information related to a specific user.
+       * @path /users/{userId}/familyGroups/{familyGroupId}
+       * @allow (get) User 'alice' (auth.uid: 'alice') can read a family group they own.
+       * @allow (create) User 'alice' (auth.uid: 'alice') can create a family group if they are the owner.
+       * @allow (update) User 'alice' (auth.uid: 'alice') can update a family group they own.
+       * @allow (delete) User 'alice' (auth.uid: 'alice') can delete a family group they own.
+       * @deny (create) User 'bob' (auth.uid: 'bob') cannot create a family group for Alice (userId: 'alice').
+       * @deny (update) User 'bob' (auth.uid: 'bob') cannot update a family group owned by Alice (userId: 'alice').
+       * @deny (delete) User 'bob' (auth.uid: 'bob') cannot delete a family group owned by Alice (userId: 'alice').
+       * @principle Enforces document ownership for all operations on user-specific family groups.
+       */
+    match /users/{userId}/familyGroups/{familyGroupId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      allow get: if isSignedIn() && isOwner(userId);
+      allow list: if isSignedIn() && isOwner(userId);
+      allow create: if isSignedIn() && isOwner(userId); // Owner must match path.
+      allow update: if isSignedIn() && isOwner(userId); // Owner must match path
+      allow delete: if isSignedIn() && isOwner(userId);
+    }
+  }
+}

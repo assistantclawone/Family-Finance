@@ -1,0 +1,175 @@
+{
+  "entities": {
+    "FamilyGroup": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "FamilyGroup",
+      "type": "object",
+      "description": "Represents a family or group that collaborates on financial planning within the application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the FamilyGroup entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the family or group."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the family or group."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Reference to the User who created/owns this group. (Relationship: User 1:N FamilyGroup)"
+        },
+        "memberIds": {
+          "type": "array",
+          "description": "References to Users that are members of this group. (Relationship: User N:N FamilyGroup)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The timestamp when the group was created."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "ownerId"
+      ]
+    },
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The user's name."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email"
+      ]
+    },
+    "Transaction": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Transaction",
+      "type": "object",
+      "description": "Represents a financial transaction (income or expense).",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Transaction."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who owns this transaction."
+        },
+        "description": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string",
+          "enum": ["EUR", "CHF"]
+        },
+        "date": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["income", "expense"]
+        },
+        "isRecurring": {
+          "type": "boolean"
+        },
+        "isEstimate": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["confirmed", "pending"]
+        }
+      },
+      "required": ["id", "description", "amount", "currency", "date", "type", "userId"]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profile information.  Path-based ownership for private data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/transactions/{transactionId}",
+        "definition": {
+          "entityName": "Transaction",
+          "schema": {
+            "$ref": "#/backend/entities/Transaction"
+          },
+          "description": "Stores all financial transactions for all users. Documents are secured by a `userId` field.",
+          "params": [
+            {
+              "name": "transactionId",
+              "description": "The unique identifier of the transaction."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/familyGroups/{familyGroupId}",
+        "definition": {
+          "entityName": "FamilyGroup",
+          "schema": {
+            "$ref": "#/backend/entities/FamilyGroup"
+          },
+          "description": "Stores family group information. Includes `ownerId` and `memberIds` for authorization.",
+          "params": [
+            {
+              "name": "familyGroupId",
+              "description": "The unique identifier of the family group."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "This design prioritizes authorization independence and secure list operations (QAPs) using denormalization and structural segregation. User-owned data is structured under `/users/{userId}` for simplified ownership-based security rules. Collaborative family group data utilizes a membership map (`members`) denormalized into relevant subcollections to avoid `get()` calls in security rules. \n\nThe structure supports the following:\n\n1.  **Authorization Independence:** The `FamilyGroup`'s `memberIds` are used to manage group membership. This membership information is then denormalized into subcollections that require authorization based on group membership. This avoids `get()` calls in security rules.\n\n2.  **Secure List Operations (QAPs):**  Data segregation ensures that list operations are always secure.  For example, listing documents under `/users/{userId}/familyGroups` only returns groups the user owns, without needing complex filtering in rules.\n\n3. **Data Integrity:**  The structure facilitates maintaining data integrity for ownership (e.g., `ownerId` in `FamilyGroup`) and, potentially, timestamps by enforcing these invariants in security rules.\n\n4.  **DBAC:** Roles are managed through group membership, which are stored in the database. Authorization relies solely on `request.auth.uid`.\n"
+  }
+}
