@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, PlusCircle, Search, Globe } from 'lucide-react';
+import { Bell, PlusCircle, Search, Globe, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,17 +15,26 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { SidebarTrigger } from '../ui/sidebar';
-import { user as staticUser } from '@/lib/data';
-import { useUser } from '@/firebase';
+import { useUser, signOut } from '@/firebase';
 import { useRegion } from '@/contexts/region-context';
 import { AddTransactionDialog } from '../finances/add-transaction-dialog';
 import { useState } from 'react';
-import type { Transaction } from '@/lib/types';
+import { useRouter } from 'next/navigation';
 
 export function Header({ title }: { title: string }) {
   const { user } = useUser();
   const { region, setRegion } = useRegion();
   const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false);
+  const router = useRouter();
+
+  const initials = user?.email
+    ? user.email.charAt(0).toUpperCase()
+    : '?';
+
+  const handleLogout = async () => {
+    await signOut();
+    router.push('/login');
+  };
 
   return (
     <>
@@ -73,20 +82,21 @@ export function Header({ title }: { title: string }) {
             <DropdownMenuTrigger asChild>
               <Button variant="secondary" size="icon" className="rounded-full">
                 <Avatar className="h-9 w-9">
-                  <AvatarImage src={user?.photoURL || staticUser.avatar} alt={user?.displayName || staticUser.name} data-ai-hint="person portrait" />
-                  <AvatarFallback>{(user?.displayName || staticUser.name).charAt(0)}</AvatarFallback>
+                  <AvatarImage src={user?.user_metadata?.avatar_url || undefined} alt={user?.user_metadata?.name || user?.email || 'Benutzer'} data-ai-hint="person portrait" />
+                  <AvatarFallback>{user?.email ? initials : '?'}</AvatarFallback>
                 </Avatar>
                 <span className="sr-only">Benutzermenü</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Mein Konto</DropdownMenuLabel>
+              <DropdownMenuLabel>{user?.email || 'Nicht angemeldet'}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Profil</DropdownMenuItem>
-              <DropdownMenuItem>Abrechnung</DropdownMenuItem>
-              <DropdownMenuItem>Einstellungen</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/settings')}>Einstellungen</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Abmelden</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Abmelden
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

@@ -8,10 +8,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { useAuth, useFirestore, useUser } from '@/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { useUser } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { addDocumentNonBlocking } from '@/firebase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Der Name muss mindestens 2 Zeichen lang sein.' }),
@@ -20,7 +19,6 @@ const formSchema = z.object({
 
 export function CreateFamilyGroup() {
   const { user } = useUser();
-  const firestore = useFirestore();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -33,7 +31,7 @@ export function CreateFamilyGroup() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!user) {
+    if (!user || !supabase || !isSupabaseConfigured) {
       toast({
         variant: 'destructive',
         title: 'Fehler',
@@ -44,13 +42,11 @@ export function CreateFamilyGroup() {
     setIsLoading(true);
 
     try {
-      const collectionRef = collection(firestore, 'familyGroups');
-      await addDocumentNonBlocking(collectionRef, {
+      await supabase.from('family_groups').insert({
         name: values.name,
-        description: values.description,
-        ownerId: user.uid,
-        memberIds: [user.uid],
-        createdAt: new Date().toISOString(),
+        description: values.description || null,
+        owner_id: user.id,
+        member_ids: [user.id],
       });
 
       toast({
@@ -86,7 +82,7 @@ export function CreateFamilyGroup() {
                 <FormItem>
                   <FormLabel>Gruppenname</FormLabel>
                   <FormControl>
-                    <Input placeholder="z.B. Familie Schmidt" {...field} />
+                    <Input placeholder="z.B. Familie Müller" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

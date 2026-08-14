@@ -2,48 +2,34 @@
 
 import { MainLayout } from "@/components/layout/main-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useUser } from "@/firebase";
+import { useUser, useCollection } from "@/firebase";
 import { CreateFamilyGroup } from "@/components/family/create-family-group";
 import { FamilyGroupDetails } from "@/components/family/family-group-details";
 import { JoinFamilyGroup } from "@/components/family/join-family-group";
-import { collection, query, where, doc, or } from "firebase/firestore";
-import { useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Terminal } from "lucide-react";
-import { initiateAnonymousSignIn } from "@/firebase/non-blocking-login";
-import { useAuth } from "@/firebase";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import React, { useMemo } from 'react';
 
 export default function FamilyPage() {
   const { user, isUserLoading } = useUser();
-  const firestore = useFirestore();
-  const auth = useAuth();
 
-  // Query for groups where the user is a member OR the owner
-  const familyGroupQuery = useMemoFirebase(() => {
-    if (!user?.uid || !firestore) return null;
-    return query(
-        collection(firestore, 'familyGroups'),
-        or(
-            where('memberIds', 'array-contains', user.uid),
-            where('ownerId', '==', user.uid)
-        )
-    );
-  }, [firestore, user?.uid]);
+  // Query groups where the user is a member OR the owner
+  const familyGroupQuery = useMemo(() => {
+    if (!user?.id || !isSupabaseConfigured) return null;
+    return (client: any) =>
+      client.from('family_groups').select('*').or(`owner_id.eq.${user.id},member_ids.cs.{${user.id}}`);
+  }, [user?.id]);
 
-  const { data: familyGroups, isLoading: isGroupsLoading } = useCollection(familyGroupQuery);
+  const { data: familyGroups, isLoading: isGroupsLoading } = useCollection<any>(familyGroupQuery);
 
   const familyGroup = useMemo(() => {
     if (!familyGroups || familyGroups.length === 0) return null;
     // For now, just display the first group the user belongs to.
     return familyGroups[0];
   }, [familyGroups]);
-
-
-  const handleLogin = () => {
-    initiateAnonymousSignIn(auth);
-  };
   
   if (isUserLoading || isGroupsLoading) {
     return (
@@ -69,9 +55,23 @@ export default function FamilyPage() {
           <AlertTitle>Anmeldung erforderlich</AlertTitle>
           <AlertDescription>
             Sie müssen angemeldet sein, um Ihre Familiengruppe zu verwalten.
-             <Button onClick={handleLogin} className="mt-4">
-              Anonym anmelden
+             <Button asChild className="mt-4">
+              <Link href="/login">Anmelden</Link>
             </Button>
+          </AlertDescription>
+        </Alert>
+      </MainLayout>
+    );
+  }
+
+  if (!isSupabaseConfigured) {
+    return (
+      <MainLayout title="Familie">
+        <Alert>
+          <Terminal className="h-4 w-4" />
+          <AlertTitle>Supabase nicht konfiguriert</AlertTitle>
+          <AlertDescription>
+            Für die Familienverwaltung muss Supabase eingerichtet sein.
           </AlertDescription>
         </Alert>
       </MainLayout>

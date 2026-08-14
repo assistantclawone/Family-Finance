@@ -8,10 +8,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { useFirestore, useUser } from '@/firebase';
-import { doc, updateDoc, getDoc, arrayUnion } from 'firebase/firestore';
+import { useUser } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 
 const formSchema = z.object({
   groupId: z.string().min(1, { message: 'Die Gruppen-ID darf nicht leer sein.' }),
@@ -19,7 +18,6 @@ const formSchema = z.object({
 
 export function JoinFamilyGroup() {
   const { user } = useUser();
-  const firestore = useFirestore();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -31,7 +29,7 @@ export function JoinFamilyGroup() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!user) {
+    if (!user || !supabase || !isSupabaseConfigured) {
       toast({
         variant: 'destructive',
         title: 'Fehler',
@@ -41,38 +39,49 @@ export function JoinFamilyGroup() {
     }
     setIsLoading(true);
 
-    const groupRef = doc(firestore, 'familyGroups', values.groupId);
-
     try {
-      const groupSnap = await getDoc(groupRef);
-      if (!groupSnap.exists()) {
+      const { data: group, error } = await supabase
+        .from('family_groups')
+        .select('id, name, member_ids, owner_id')
+        .eq('id', values.groupId)
+        .single();
+
+      if (error || !group) {
         toast({
           variant: 'destructive',
           title: 'Fehler',
           description: 'Gruppe nicht gefunden. Überprüfen Sie die ID.',
         });
-        setIsLoading(false);
         return;
       }
-      
-      const groupData = groupSnap.data();
-      if(groupData.memberIds.includes(user.uid)) {
-          toast({
-            title: 'Bereits Mitglied',
-            description: 'Sie sind bereits Mitglied in dieser Gruppe.',
-          });
-          setIsLoading(false);
-          return;
+
+      const memberIds: string[] = group.member_ids ?? [];
+      if (memberIds.includes(user.id)) {
+        toast({
+          title: 'Bereits Mitglied',
+          description: 'Sie sind bereits Mitglied in dieser Gruppe.',
+        });
+        return;
       }
 
-      updateDocumentNonBlocking(groupRef, {
-        memberIds: arrayUnion(user.uid),
-      });
-
-      toast({
-        title: 'Erfolgreich beigetreten!',
-        description: `Sie sind nun Mitglied der Gruppe "${groupSnap.data().name}".`,
-      });
+      // Nur der Eigentümer kann die Mitgliederliste per RLS ändern.
+      // Daher: DB-Update nur, wenn der aktuelle Nutzer der Besitzer ist.
+      if (group.owner_id === user.id) {
+        const { error: updErr } = await supabase
+          .from('family_groups')
+          .update({ member_ids: [...memberIds, user.id] })
+          .eq('id', group.id);
+        if (updErr) throw updErr;
+        toast({
+          title: 'Erfolgreich beigetreten!',
+          description: `Sie sind nun Mitglied der Gruppe "${group.name}".`,
+        });
+      } else {
+        toast({
+          title: 'Beitritt nur über den Eigentümer',
+          description: `Bitte bitten Sie den Eigentümer der Gruppe "${group.name}", Sie hinzuzufügen.`,
+        });
+      }
       form.reset();
     } catch (error) {
       console.error('Fehler beim Beitritt zur Gruppe:', error);

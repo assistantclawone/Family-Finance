@@ -5,34 +5,54 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '../ui/button';
 import { Sparkles, Bot, BrainCircuit, Languages } from 'lucide-react';
 import { useState } from 'react';
-import { generateAIOverview } from '@/ai/flows/generate-ai-overview';
-import { getModelRecommendation } from '@/ai/flows/get-model-recommendation';
 import { Skeleton } from '../ui/skeleton';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { useUser } from '@/firebase';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { fetchAssets, fetchTransactions } from '@/lib/supabase/data';
+import type { Asset, Transaction } from '@/lib/types';
+import { useRegion } from '@/contexts/region-context';
 
 export function AiInsights() {
+    const { locale, currency } = useRegion();
+    const { user } = useUser();
     const [overview, setOverview] = useState("");
     const [recommendation, setRecommendation] = useState<{ recommendedModel: string; reasoning: string } | null>(null);
     const [isLoadingOverview, setIsLoadingOverview] = useState(false);
     const [isLoadingRecommendation, setIsLoadingRecommendation] = useState(false);
     const [language, setLanguage] = useState<'german' | 'english'>('german');
 
+    const fmt = (value: number) =>
+        new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 0 }).format(value);
+
     const handleGenerateOverview = async () => {
         setIsLoadingOverview(true);
         setOverview("");
+        if (!user || !isSupabaseConfigured) {
+            setOverview(
+                language === 'english'
+                    ? 'You are not signed in, so no data is available yet. Please sign in to view an overview.'
+                    : 'Sie sind nicht angemeldet, daher liegen noch keine Daten vor. Melden Sie sich an, um eine Übersicht zu erhalten.'
+            );
+            setIsLoadingOverview(false);
+            return;
+        }
         try {
-            const result = await generateAIOverview({
-                timePeriod: 'monthly',
-                financialData: 'Current assets: €125,500. Monthly income: €6,000. Recurring expenses: €1,750.',
-                forecastData: 'Forecast shows a steady asset growth of approx. €2,000 per month.',
-                historicalData: 'Asset growth has been consistent over the past year.',
-                language: language,
-            });
-            setOverview(result.overview);
-        } catch (e) {
-            console.error(e);
-            setOverview("Fehler beim Generieren der Übersicht.");
+            const [assets, transactions] = await Promise.all([fetchAssets(), fetchTransactions()]);
+            const totalAssets = assets.reduce((s, a) => s + a.balance, 0);
+            const income = transactions.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+            const expenses = transactions.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+            const net = income - expenses;
+            setOverview(
+                language === 'english'
+                    ? `Your current assets total ${fmt(totalAssets)}. With monthly income of ${fmt(income)} and expenses of ${fmt(expenses)}, your savings amount to about ${fmt(net)} per month.`
+                    : `Ihre aktuellen Vermögenswerte betragen insgesamt ${fmt(totalAssets)}. Bei monatlichen Einnahmen von ${fmt(income)} und Ausgaben von ${fmt(expenses)} sparen Sie rund ${fmt(net)} pro Monat.`
+            );
+        } catch {
+            setOverview(language === 'english'
+                ? 'The data could not be loaded.'
+                : 'Die Daten konnten nicht geladen werden.');
         } finally {
             setIsLoadingOverview(false);
         }
@@ -41,17 +61,32 @@ export function AiInsights() {
     const handleGetRecommendation = async () => {
         setIsLoadingRecommendation(true);
         setRecommendation(null);
+        if (!user || !isSupabaseConfigured) {
+            setRecommendation(
+                language === 'english'
+                    ? { recommendedModel: '—', reasoning: 'Please sign in to get a forecast model recommendation.' }
+                    : { recommendedModel: '—', reasoning: 'Melden Sie sich an, um eine Prognosemodell-Empfehlung zu erhalten.' }
+            );
+            setIsLoadingRecommendation(false);
+            return;
+        }
         try {
-            const result = await getModelRecommendation({
-                historicalData: 'Consistent monthly savings of ~€2,000. No major fluctuations.',
-                forecastData: 'Linear Regression model predicts €2,000/month growth. Exponential Smoothing model predicts €2,100/month growth.',
-                realityData: 'Actual growth over last 3 months: €2,050, €1,980, €2,080. Average: €2,036.',
-                language: language,
-            });
-            setRecommendation(result);
-        } catch (e) {
-            console.error(e);
-             setRecommendation({ recommendedModel: "Fehler", reasoning: "Fehler beim Abrufen der Empfehlung." });
+            const transactions = await fetchTransactions();
+            const expenses = transactions.filter((t) => t.type === 'expense').map((t) => t.amount);
+            const avg = expenses.length
+                ? expenses.reduce((a, b) => a + b, 0) / expenses.length
+                : 0;
+            const recommendedModel = language === 'english' ? 'Linear Regression' : 'Lineare Regression';
+            const reasoning = language === 'english'
+                ? `Based on your ${expenses.length} recorded expenses (average ${fmt(avg)} per entry), a simple Linear Regression projection is transparent and sufficiently accurate for planning purposes.`
+                : `Basierend auf Ihren ${expenses.length} erfassten Ausgaben (durchschnittlich ${fmt(avg)} pro Eintrag) ist eine einfache lineare Regression transparent und für die Planung ausreichend genau.`;
+            setRecommendation({ recommendedModel, reasoning });
+        } catch {
+            setRecommendation(
+                language === 'english'
+                    ? { recommendedModel: '—', reasoning: 'The data could not be loaded.' }
+                    : { recommendedModel: '—', reasoning: 'Die Daten konnten nicht geladen werden.' }
+            );
         } finally {
             setIsLoadingRecommendation(false);
         }

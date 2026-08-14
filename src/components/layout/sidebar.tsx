@@ -1,11 +1,10 @@
 'use client';
 
-import { Coins, DollarSign, Gauge, BookHeart, Settings, Shield, Users } from 'lucide-react';
+import { Coins, DollarSign, Gauge, BookHeart, Settings, Shield, Users, LogOut } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { user as staticUser } from '@/lib/data';
-import { useUser } from '@/firebase';
+import { useUser, signOut } from '@/firebase';
 
 import {
   Sidebar,
@@ -19,6 +18,7 @@ import {
   SidebarGroup,
 } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { Button } from '../ui/button';
 import { useSidebar } from '../ui/sidebar';
 
 const AnydayToolLogo = () => (
@@ -34,6 +34,16 @@ export function AppSidebar() {
   const pathname = usePathname();
   const { isMobile } = useSidebar();
   const { user } = useUser();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await signOut();
+    router.push('/login');
+  };
+
+  const initials = user?.email
+    ? user.email.charAt(0).toUpperCase()
+    : '?';
 
   const menuItems = [
     { href: '/', label: 'Dashboard', icon: Gauge },
@@ -88,14 +98,23 @@ export function AppSidebar() {
             </Link>
           </SidebarMenuItem>
         </SidebarMenu>
-        <div className="flex items-center gap-3 p-2 overflow-hidden border-t mt-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-none group-data-[collapsible=icon]:mt-0">
-          <Avatar className="h-9 w-9">
-            <AvatarImage src={user?.photoURL || staticUser.avatar} alt={user?.displayName || staticUser.name} data-ai-hint="person portrait" />
-            <AvatarFallback>{(user?.displayName || staticUser.name).charAt(0)}</AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
-            <span className="font-medium truncate text-sm">{user?.displayName || 'Anonym'}</span>
-            <span className="text-xs text-muted-foreground truncate">{user?.email || 'Nicht angemeldet'}</span>
+        <div className="overflow-hidden border-t mt-2 group-data-[collapsible=icon]:border-none group-data-[collapsible=icon]:mt-0">
+          <div className="flex items-center justify-between p-2 group-data-[collapsible=icon]:justify-center">
+            <div className="flex items-center gap-3 overflow-hidden group-data-[collapsible=icon]:hidden">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={user?.user_metadata?.avatar_url || undefined} alt={user?.email || 'Benutzer'} data-ai-hint="person portrait" />
+                <AvatarFallback>{user?.email ? initials : '?'}</AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col overflow-hidden">
+                <span className="font-medium truncate text-sm">{user?.email ? user.email.split('@')[0] : 'Nicht angemeldet'}</span>
+                <span className="text-xs text-muted-foreground truncate">{user?.email || ''}</span>
+              </div>
+            </div>
+            {user && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={handleLogout} aria-label="Abmelden">
+                <LogOut className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </SidebarFooter>

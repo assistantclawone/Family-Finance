@@ -23,9 +23,9 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useRegion } from '@/contexts/region-context';
 import { useToast } from '@/hooks/use-toast';
-import { useUser, useFirestore } from '@/firebase';
-import { collection } from 'firebase/firestore';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { useUser } from '@/firebase';
+import { addTransaction, updateTransaction } from '@/lib/supabase/data';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
 import type { Transaction } from '@/lib/types';
 
 const formSchema = z.object({
@@ -43,10 +43,9 @@ interface AddTransactionDialogProps {
 }
 
 export function AddTransactionDialog({ open, onOpenChange, transaction }: AddTransactionDialogProps) {
-  const { region, currency } = useRegion();
+  const { currency } = useRegion();
   const { toast } = useToast();
   const { user } = useUser();
-  const firestore = useFirestore();
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -82,25 +81,36 @@ export function AddTransactionDialog({ open, onOpenChange, transaction }: AddTra
 
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!user || !firestore) {
-      toast({ variant: 'destructive', title: 'Fehler', description: 'Sie müssen angemeldet sein.' });
+    if (!user || !isSupabaseConfigured) {
+      toast({ variant: 'destructive', title: 'Fehler', description: 'Sie müssen angemeldet sein und Supabase muss konfiguriert sein.' });
       return;
     }
     setIsLoading(true);
     
     try {
-      // In a real app, you would differentiate between creating a new doc and updating one
-      // For this example, we just add a new one.
-      const collectionRef = collection(firestore, 'transactions');
-      await addDocumentNonBlocking(collectionRef, {
-        ...values,
-        userId: user.uid,
-        date: values.date.toISOString(),
-        currency: currency,
-        isRecurring: transaction?.isRecurring || false, // Keep recurring status if editing
-        status: 'confirmed', // When user submits, it's confirmed.
-        createdAt: new Date().toISOString(),
-      });
+      const date = values.date.toISOString();
+      if (transaction?.id) {
+        await updateTransaction(transaction.id, {
+          description: values.description,
+          amount: values.amount,
+          date,
+          type: values.type,
+          isEstimate: values.isEstimate,
+          currency,
+        });
+      } else {
+        await addTransaction({
+          description: values.description,
+          amount: values.amount,
+          currency,
+          date,
+          type: values.type,
+          isRecurring: false,
+          isEstimate: values.isEstimate,
+          category: undefined,
+          status: 'confirmed',
+        });
+      }
       
       toast({
         title: transaction ? 'Eintrag aktualisiert!' : 'Eintrag erstellt!',

@@ -2,39 +2,83 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendingDown, DollarSign, Wallet, TrendingUp } from 'lucide-react';
-import { getDataForRegion } from '@/lib/data';
 import { useRegion } from '@/contexts/region-context';
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
+import { useUser } from '@/firebase';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { fetchAssets, fetchTransactions } from '@/lib/supabase/data';
+import type { Asset, Transaction } from '@/lib/types';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export function Overview() {
-  const { region, locale, currency } = useRegion();
-  
-  const data = useMemo(() => {
-    const { assets, forecastData, recurringExpenses } = getDataForRegion(region);
-    
-    const totalAssets = assets.reduce((sum, asset) => sum + asset.balance, 0);
-    const monthlyIncome = 6000; // Assuming static for now
-    const monthlyExpenses = recurringExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-    const forecast3Months = forecastData[2]?.value || 0; // 3rd month from now
+  const { locale, currency } = useRegion();
+  const { user, isUserLoading } = useUser();
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-    return {
-      totalAssets,
-      monthlyIncome,
-      monthlyExpenses,
-      forecast3Months
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      if (!user || !isSupabaseConfigured) {
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const [a, t] = await Promise.all([fetchAssets(), fetchTransactions()]);
+        if (!mounted) return;
+        setAssets(a);
+        setTransactions(t);
+      } catch (e) {
+        console.error('Fehler beim Laden der Daten:', e);
+        if (mounted) {
+          setAssets([]);
+          setTransactions([]);
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
     };
-  }, [region]);
+    load();
+    return () => { mounted = false; };
+  }, [user]);
+
+  const totalAssets = assets.reduce((sum, asset) => sum + asset.balance, 0);
+  const monthlyIncome = transactions.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const monthlyExpenses = transactions.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const netSavings = monthlyIncome - monthlyExpenses;
+  // Überschlägige Projektion über 3 Monate anhand des geschätzten Netto-Sparbetrags
+  const forecast3Months = totalAssets + Math.max(netSavings, 0) * 3;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat(locale, { style: 'currency', currency: currency }).format(value);
   }
   
   const overviewCards = [
-    { title: 'Gesamtvermögen', value: formatCurrency(data.totalAssets), icon: Wallet, change: '+2.5% vs. Vormonat' },
-    { title: 'Prognose (3 Monate)', value: formatCurrency(data.forecast3Months), icon: TrendingUp, change: '+5.1% erwartet' },
-    { title: 'Monatseinkommen', value: formatCurrency(data.monthlyIncome), icon: DollarSign, change: 'fix' },
-    { title: 'Monatsausgaben', value: `~ ${formatCurrency(data.monthlyExpenses)}`, icon: TrendingDown, change: 'variabel' },
+    { title: 'Gesamtvermögen', value: formatCurrency(totalAssets), icon: Wallet, change: 'Ist-Bestand' },
+    { title: 'Prognose (3 Monate)', value: formatCurrency(forecast3Months), icon: TrendingUp, change: 'überschlägig' },
+    { title: 'Monatseinkommen', value: formatCurrency(monthlyIncome), icon: DollarSign, change: 'Ist-Daten' },
+    { title: 'Monatsausgaben', value: `~ ${formatCurrency(monthlyExpenses)}`, icon: TrendingDown, change: 'variabel' },
   ];
+
+  if (isUserLoading || isLoading) {
+    return (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <Card key={i}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <Skeleton className="h-4 w-24" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-8 w-28" />
+              <Skeleton className="mt-2 h-3 w-20" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

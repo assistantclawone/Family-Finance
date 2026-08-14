@@ -17,8 +17,8 @@ export const RegionProvider = ({ children }: { children: ReactNode }) => {
   const [region, setRegion] = useState<Region>('DE');
 
   const contextValue = useMemo(() => {
-    const currency = region === 'CH' ? 'CHF' : 'EUR';
-    const locale = region === 'AT' ? 'de-AT' : region === 'CH' ? 'de-CH' : 'de-DE';
+    const currency: 'EUR' | 'CHF' = region === 'CH' ? 'CHF' : 'EUR';
+    const locale: 'de-DE' | 'de-AT' | 'de-CH' = region === 'AT' ? 'de-AT' : region === 'CH' ? 'de-CH' : 'de-DE';
     return { region, setRegion, currency, locale };
   }, [region]);
 

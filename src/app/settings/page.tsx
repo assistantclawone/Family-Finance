@@ -5,41 +5,64 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useUser, useAuth } from "@/firebase";
-import { updateProfile } from "firebase/auth";
+import { useUser, useAuth, signOut } from "@/firebase";
+import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "next-themes";
+import { useRouter } from "next/navigation";
 
 export default function SettingsPage() {
   const { user } = useUser();
   const auth = useAuth();
+  const currentUser = auth.currentUser;
   const { toast } = useToast();
   const [displayName, setDisplayName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const { theme, setTheme } = useTheme();
+  const router = useRouter();
 
   useEffect(() => {
-    if (user?.displayName) {
-      setDisplayName(user.displayName);
-    }
-  }, [user]);
+    const meta = currentUser?.user_metadata as Record<string, any> | undefined;
+    const email = user?.email || '';
+    setDisplayName(meta?.name || (email ? email.split('@')[0] : ''));
+  }, [user, currentUser]);
 
   const handleProfileUpdate = async () => {
-    if (!auth.currentUser) {
+    if (!currentUser) {
         toast({ variant: "destructive", title: "Fehler", description: "Sie sind nicht angemeldet." });
         return;
     }
     setIsSaving(true);
     try {
-        await updateProfile(auth.currentUser, { displayName });
+        await supabase!.auth.updateUser({ data: { name: displayName } });
+        await supabase!.from('profiles').upsert({
+          id: currentUser.id,
+          name: displayName,
+          email: currentUser.email ?? '',
+          updated_at: new Date().toISOString(),
+        });
         toast({ title: "Erfolg!", description: "Ihr Name wurde aktualisiert." });
     } catch (error) {
         console.error("Error updating profile: ", error);
         toast({ variant: "destructive", title: "Fehler", description: "Ihr Name konnte nicht aktualisiert werden." });
     } finally {
         setIsSaving(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await signOut();
+      router.push('/login');
+      router.refresh();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Fehler", description: "Abmelden fehlgeschlagen." });
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
@@ -58,9 +81,9 @@ export default function SettingsPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">Anzeigename</Label>
-              <Input 
-                id="name" 
-                value={displayName} 
+              <Input
+                id="name"
+                value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Ihr Name"
               />
@@ -76,7 +99,7 @@ export default function SettingsPage() {
             </Button>
           </CardFooter>
         </Card>
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Darstellung</CardTitle>
@@ -96,6 +119,18 @@ export default function SettingsPage() {
                 onCheckedChange={handleThemeChange}
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Konto</CardTitle>
+            <CardDescription>Melden Sie sich von diesem Gerät ab.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="destructive" onClick={handleLogout} disabled={isLoggingOut}>
+              {isLoggingOut ? "Wird abgemeldet..." : "Abmelden"}
+            </Button>
           </CardContent>
         </Card>
       </div>

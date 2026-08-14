@@ -4,12 +4,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { getDataForRegion } from '@/lib/data';
 import { Pencil, BadgeEuro } from 'lucide-react';
 import type { Transaction } from '@/lib/types';
 import { useRegion } from '@/contexts/region-context';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AddTransactionDialog } from '../finances/add-transaction-dialog';
+import { useUser } from '@/firebase';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { fetchTransactions } from '@/lib/supabase/data';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Terminal } from 'lucide-react';
 
 function ExpenseRow({ expense, onEdit }: { expense: Transaction, onEdit: (expense: Transaction) => void }) {
     const { locale } = useRegion();
@@ -53,10 +58,35 @@ function ExpenseRow({ expense, onEdit }: { expense: Transaction, onEdit: (expens
 }
 
 export function UpcomingExpenses() {
-  const { region } = useRegion();
-  const { recurringExpenses } = getDataForRegion(region);
+  const { user, isUserLoading } = useUser();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | undefined>(undefined);
+
+  const loadTransactions = async () => {
+    if (!user || !isSupabaseConfigured) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const data = await fetchTransactions();
+      // Wiederkehrende und ausstehende Fixkosten anzeigen
+      const recurring = data.filter((t) => t.type === 'expense' && t.isRecurring);
+      setTransactions(recurring.length > 0 ? recurring : data.filter((t) => t.type === 'expense'));
+    } catch (e) {
+      console.error('Fehler beim Laden der Fixkosten:', e);
+      setTransactions([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const handleEdit = (expense: Transaction) => {
     setSelectedTransaction(expense);
@@ -66,6 +96,7 @@ export function UpcomingExpenses() {
   const handleDialogClose = () => {
     setIsDialogOpen(false);
     setSelectedTransaction(undefined);
+    loadTransactions();
   }
 
   return (
@@ -76,20 +107,39 @@ export function UpcomingExpenses() {
           <CardDescription>Bestätigen Sie Ihre wiederkehrenden Ausgaben für diesen Monat, um die Prognose zu verfeinern.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Beschreibung</TableHead>
-                <TableHead>Typ</TableHead>
-                <TableHead className="text-right">Betrag</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-                <TableHead className="text-right">Aktion</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recurringExpenses.map((expense) => <ExpenseRow key={expense.id} expense={expense} onEdit={handleEdit} />)}
-            </TableBody>
-          </Table>
+          {isUserLoading || isLoading ? (
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="ml-auto h-4 w-16" />
+                </div>
+              ))}
+            </div>
+          ) : !user || !isSupabaseConfigured ? (
+            <Alert>
+              <Terminal className="h-4 w-4" />
+              <AlertTitle>Anmeldung erforderlich</AlertTitle>
+              <AlertDescription>Melden Sie sich an, um Ihre wiederkehrenden Ausgaben zu sehen.</AlertDescription>
+            </Alert>
+          ) : transactions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Noch keine wiederkehrenden Ausgaben erfasst.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Beschreibung</TableHead>
+                  <TableHead>Typ</TableHead>
+                  <TableHead className="text-right">Betrag</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                  <TableHead className="text-right">Aktion</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {transactions.map((expense) => <ExpenseRow key={expense.id} expense={expense} onEdit={handleEdit} />)}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
       <AddTransactionDialog 
