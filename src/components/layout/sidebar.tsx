@@ -1,6 +1,6 @@
 'use client';
 
-import { Coins, DollarSign, Gauge, BookHeart, Settings, Shield, Users, LogOut } from 'lucide-react';
+import { Coins, DollarSign, Gauge, BookHeart, Settings, Shield, Users, LogOut, Wallet, PiggyBank, ReceiptText } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -48,6 +48,9 @@ export function AppSidebar() {
   const menuItems = [
     { href: '/', label: 'Dashboard', icon: Gauge },
     { href: '/finances', label: 'Finanzen', icon: DollarSign },
+    { href: '/vermoegen', label: 'Vermögen', icon: Wallet },
+    { href: '/budget', label: 'Budget & Ziele', icon: PiggyBank },
+    { href: '/tax', label: 'Steuererklärung', icon: ReceiptText },
     { href: '/family', label: 'Familie', icon: Users },
     { href: '/health', label: 'Gesundheit', icon: BookHeart },
     { href: '/insurance', label: 'Versicherung', icon: Shield },

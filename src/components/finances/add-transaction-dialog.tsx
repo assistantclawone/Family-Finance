@@ -16,6 +16,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
@@ -34,7 +41,13 @@ const formSchema = z.object({
   type: z.enum(['income', 'expense'], { required_error: 'Bitte Art auswählen.' }),
   date: z.date({ required_error: 'Bitte ein Datum auswählen.' }),
   isEstimate: z.boolean().default(false),
+  category: z.string().optional(),
 });
+
+export const TRANSACTION_CATEGORIES = [
+  'Wohnen', 'Lebensmittel', 'Transport', 'Versicherung', 'Gesundheit',
+  'Bildung', 'Freizeit', 'Kleidung', 'Essen gehen', 'Sonstiges',
+];
 
 interface AddTransactionDialogProps {
   open: boolean;
@@ -56,6 +69,7 @@ export function AddTransactionDialog({ open, onOpenChange, transaction }: AddTra
       type: 'expense',
       date: new Date(),
       isEstimate: false,
+      category: undefined,
     },
   });
 
@@ -67,6 +81,7 @@ export function AddTransactionDialog({ open, onOpenChange, transaction }: AddTra
         type: transaction.type,
         date: new Date(transaction.date),
         isEstimate: transaction.isEstimate,
+        category: transaction.category ?? undefined,
       });
     } else {
         form.reset({
@@ -74,7 +89,8 @@ export function AddTransactionDialog({ open, onOpenChange, transaction }: AddTra
             amount: 0,
             type: 'expense',
             date: new Date(),
-            isEstimate: false
+            isEstimate: false,
+            category: undefined
         })
     }
   }, [transaction, form, open]);
@@ -97,6 +113,7 @@ export function AddTransactionDialog({ open, onOpenChange, transaction }: AddTra
           type: values.type,
           isEstimate: values.isEstimate,
           currency,
+          category: values.category,
         });
       } else {
         await addTransaction({
@@ -107,7 +124,7 @@ export function AddTransactionDialog({ open, onOpenChange, transaction }: AddTra
           type: values.type,
           isRecurring: false,
           isEstimate: values.isEstimate,
-          category: undefined,
+          category: values.category,
           status: 'confirmed',
         });
       }
@@ -150,6 +167,28 @@ export function AddTransactionDialog({ open, onOpenChange, transaction }: AddTra
                   <FormControl>
                     <Input placeholder="z.B. Wocheneinkauf" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="category"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Kategorie</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Kategorie wählen (optional)" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {TRANSACTION_CATEGORIES.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
