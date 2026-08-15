@@ -1,10 +1,8 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
-  /* Statischer Export (GitHub Pages) */
-  output: 'export',
-  basePath: '/Family-Finance',
-  trailingSlash: true,
+  /* Vercel-Deployment: keine basePath, keine static-export-Einschränkung */
+  trailingSlash: false,
   typescript: {
     ignoreBuildErrors: true,
   },
