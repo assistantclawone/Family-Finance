@@ -1,8 +1,9 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import { MainLayout } from "@/components/layout/main-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useUser, useCollection } from "@/firebase";
+import { useUser } from "@/firebase";
 import { CreateFamilyGroup } from "@/components/family/create-family-group";
 import { FamilyGroupDetails } from "@/components/family/family-group-details";
 import { JoinFamilyGroup } from "@/components/family/join-family-group";
@@ -11,26 +12,40 @@ import { Terminal } from "lucide-react";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import React, { useMemo } from 'react';
+import { fetchFamilyGroups } from "@/lib/supabase/data";
+import type { FamilyGroup } from "@/lib/types";
 
 export default function FamilyPage() {
   const { user, isUserLoading } = useUser();
+  const [familyGroups, setFamilyGroups] = useState<FamilyGroup[]>([]);
+  const [isGroupsLoading, setIsGroupsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Query groups where the user is a member OR the owner
-  const familyGroupQuery = useMemo(() => {
-    if (!user?.id || !isSupabaseConfigured) return null;
-    return (client: any) =>
-      client.from('family_groups').select('*').or(`owner_id.eq.${user.id},member_ids.cs.{${user.id}}`);
+  const loadGroups = useCallback(async () => {
+    if (!user?.id || !isSupabaseConfigured) {
+      setIsGroupsLoading(false);
+      return;
+    }
+    setIsGroupsLoading(true);
+    setLoadError(null);
+    try {
+      const groups = await fetchFamilyGroups(user.id);
+      setFamilyGroups(groups);
+    } catch (e) {
+      console.error('Fehler beim Laden der Gruppen:', e);
+      setLoadError('Die Familiengruppen konnten nicht geladen werden.');
+      setFamilyGroups([]);
+    } finally {
+      setIsGroupsLoading(false);
+    }
   }, [user?.id]);
 
-  const { data: familyGroups, isLoading: isGroupsLoading } = useCollection<any>(familyGroupQuery);
+  useEffect(() => {
+    loadGroups();
+  }, [loadGroups]);
 
-  const familyGroup = useMemo(() => {
-    if (!familyGroups || familyGroups.length === 0) return null;
-    // For now, just display the first group the user belongs to.
-    return familyGroups[0];
-  }, [familyGroups]);
-  
+  const familyGroup = familyGroups.length > 0 ? familyGroups[0] : null;
+
   if (isUserLoading || isGroupsLoading) {
     return (
       <MainLayout title="Familie">
@@ -55,7 +70,7 @@ export default function FamilyPage() {
           <AlertTitle>Anmeldung erforderlich</AlertTitle>
           <AlertDescription>
             Sie müssen angemeldet sein, um Ihre Familiengruppe zu verwalten.
-             <Button asChild className="mt-4">
+            <Button asChild className="mt-4">
               <Link href="/login">Anmelden</Link>
             </Button>
           </AlertDescription>
@@ -80,12 +95,18 @@ export default function FamilyPage() {
 
   return (
     <MainLayout title="Familie">
+      {loadError && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>Fehler</AlertTitle>
+          <AlertDescription>{loadError}</AlertDescription>
+        </Alert>
+      )}
       {familyGroup ? (
-        <FamilyGroupDetails familyGroup={familyGroup} />
+        <FamilyGroupDetails familyGroup={familyGroup} onChanged={loadGroups} />
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
-          <CreateFamilyGroup />
-          <JoinFamilyGroup />
+          <CreateFamilyGroup onCreated={loadGroups} />
+          <JoinFamilyGroup onChanged={loadGroups} />
         </div>
       )}
     </MainLayout>

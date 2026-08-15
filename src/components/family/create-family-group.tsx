@@ -10,14 +10,15 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useUser } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { createFamilyGroup } from '@/lib/supabase/data';
 
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Der Name muss mindestens 2 Zeichen lang sein.' }),
   description: z.string().optional(),
 });
 
-export function CreateFamilyGroup() {
+export function CreateFamilyGroup({ onCreated }: { onCreated?: () => void }) {
   const { user } = useUser();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -31,7 +32,7 @@ export function CreateFamilyGroup() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!user || !supabase || !isSupabaseConfigured) {
+    if (!user || !isSupabaseConfigured) {
       toast({
         variant: 'destructive',
         title: 'Fehler',
@@ -42,18 +43,15 @@ export function CreateFamilyGroup() {
     setIsLoading(true);
 
     try {
-      await supabase.from('family_groups').insert({
-        name: values.name,
-        description: values.description || null,
-        owner_id: user.id,
-        member_ids: [user.id],
-      });
+      await createFamilyGroup(user.id, values.name, values.description || undefined);
 
       toast({
         title: 'Gruppe erstellt!',
         description: `Die Gruppe "${values.name}" wurde erfolgreich erstellt.`,
       });
       form.reset();
+      // Sofort neu laden, damit die Gruppe sichtbar wird
+      onCreated?.();
     } catch (error) {
       console.error('Fehler beim Erstellen der Gruppe:', error);
       toast({

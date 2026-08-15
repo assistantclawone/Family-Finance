@@ -10,6 +10,7 @@ import { Input } from "../ui/input";
 import { Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { deleteFamilyGroup } from "@/lib/supabase/data";
 
 interface MemberProfile {
   id: string;
@@ -17,11 +18,12 @@ interface MemberProfile {
   email: string;
 }
 
-export function FamilyGroupDetails({ familyGroup }: { familyGroup: any }) {
+export function FamilyGroupDetails({ familyGroup, onChanged }: { familyGroup: any; onChanged?: () => void }) {
   const { user } = useUser();
   const { toast } = useToast();
   const [members, setMembers] = useState<MemberProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const memberIds: string[] = familyGroup?.member_ids ?? [];
   const ownerId: string = familyGroup?.owner_id;
@@ -59,6 +61,21 @@ export function FamilyGroupDetails({ familyGroup }: { familyGroup: any }) {
       title: "Gruppen-ID kopiert!",
       description: "Sie können diese ID nun mit anderen teilen.",
     });
+  };
+
+  const handleDelete = async () => {
+    if (!isOwner || !familyGroup?.id || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await deleteFamilyGroup(familyGroup.id);
+      toast({ title: "Gruppe gelöscht", description: "Die Familiengruppe wurde entfernt." });
+      onChanged?.();
+    } catch (e) {
+      console.error("Fehler beim Löschen der Gruppe:", e);
+      toast({ variant: "destructive", title: "Fehler", description: "Die Gruppe konnte nicht gelöscht werden." });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -108,6 +125,9 @@ export function FamilyGroupDetails({ familyGroup }: { familyGroup: any }) {
             <p className="text-xs text-muted-foreground">
               Teilen Sie die Gruppen-ID mit der Person, die Sie hinzufügen möchten. Diese tritt dann selbst bei — oder Sie fügen ihre Benutzer-ID hier hinzu.
             </p>
+            <Button variant="destructive" size="sm" className="mt-4" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? "Wird gelöscht..." : "Gruppe löschen"}
+            </Button>
           </div>
         )}
       </CardContent>

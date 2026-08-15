@@ -10,16 +10,19 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useUser } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { fetchFamilyGroups, joinFamilyGroup } from '@/lib/supabase/data';
+import type { FamilyGroup } from '@/lib/types';
 
 const formSchema = z.object({
   groupId: z.string().min(1, { message: 'Die Gruppen-ID darf nicht leer sein.' }),
 });
 
-export function JoinFamilyGroup() {
+export function JoinFamilyGroup({ onChanged }: { onChanged?: () => void }) {
   const { user } = useUser();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const isConfigured = isSupabaseConfigured;
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -29,7 +32,7 @@ export function JoinFamilyGroup() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!user || !supabase || !isSupabaseConfigured) {
+    if (!user || !isConfigured) {
       toast({
         variant: 'destructive',
         title: 'Fehler',
@@ -40,23 +43,21 @@ export function JoinFamilyGroup() {
     setIsLoading(true);
 
     try {
-      const { data: group, error } = await supabase
-        .from('family_groups')
-        .select('id, name, member_ids, owner_id')
-        .eq('id', values.groupId)
-        .single();
+      // Lade alle Gruppen, zu denen der Nutzer Sicht hat (Eigentümer oder Mitglied).
+      const owned = await fetchFamilyGroups(user.id);
+      const target = owned.find((g) => g.id === values.groupId);
 
-      if (error || !group) {
+      if (!target) {
+        // Gruppe ist nicht sichtbar: Der Nutzer ist weder Mitglied noch Eigentümer.
         toast({
           variant: 'destructive',
           title: 'Fehler',
-          description: 'Gruppe nicht gefunden. Überprüfen Sie die ID.',
+          description: 'Gruppe nicht gefunden oder Sie sind kein Eigentümer dieser Gruppe.',
         });
         return;
       }
 
-      const memberIds: string[] = group.member_ids ?? [];
-      if (memberIds.includes(user.id)) {
+      if (target.memberIds.includes(user.id)) {
         toast({
           title: 'Bereits Mitglied',
           description: 'Sie sind bereits Mitglied in dieser Gruppe.',
@@ -64,24 +65,21 @@ export function JoinFamilyGroup() {
         return;
       }
 
-      // Nur der Eigentümer kann die Mitgliederliste per RLS ändern.
-      // Daher: DB-Update nur, wenn der aktuelle Nutzer der Besitzer ist.
-      if (group.owner_id === user.id) {
-        const { error: updErr } = await supabase
-          .from('family_groups')
-          .update({ member_ids: [...memberIds, user.id] })
-          .eq('id', group.id);
-        if (updErr) throw updErr;
-        toast({
-          title: 'Erfolgreich beigetreten!',
-          description: `Sie sind nun Mitglied der Gruppe "${group.name}".`,
-        });
-      } else {
+      // Nur der Eigentümer darf per RLS die Mitgliederliste ändern.
+      if (target.ownerId !== user.id) {
         toast({
           title: 'Beitritt nur über den Eigentümer',
-          description: `Bitte bitten Sie den Eigentümer der Gruppe "${group.name}", Sie hinzuzufügen.`,
+          description: `Bitte bitten Sie den Eigentümer der Gruppe "${target.name}", Sie hinzuzufügen.`,
         });
+        return;
       }
+
+      await joinFamilyGroup(target, user.id);
+      toast({
+        title: 'Erfolgreich beigetreten!',
+        description: `Sie sind nun Mitglied der Gruppe "${target.name}".`,
+      });
+      onChanged?.();
       form.reset();
     } catch (error) {
       console.error('Fehler beim Beitritt zur Gruppe:', error);
