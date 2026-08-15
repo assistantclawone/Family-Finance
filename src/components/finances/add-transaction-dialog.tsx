@@ -34,6 +34,7 @@ import { useUser } from '@/firebase';
 import { addTransaction, updateTransaction } from '@/lib/supabase/data';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import type { Transaction } from '@/lib/types';
+import { EXPENSE_CATEGORIES } from '@/lib/categories';
 
 const formSchema = z.object({
   description: z.string().min(2, { message: 'Beschreibung muss mindestens 2 Zeichen lang sein.' }),
@@ -44,10 +45,7 @@ const formSchema = z.object({
   category: z.string().optional(),
 });
 
-export const TRANSACTION_CATEGORIES = [
-  'Wohnen', 'Lebensmittel', 'Transport', 'Versicherung', 'Gesundheit',
-  'Bildung', 'Freizeit', 'Kleidung', 'Essen gehen', 'Sonstiges',
-];
+export const TRANSACTION_CATEGORIES = EXPENSE_CATEGORIES;
 
 interface AddTransactionDialogProps {
   open: boolean;

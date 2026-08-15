@@ -22,12 +22,10 @@ import { useUser } from '@/firebase';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import { fetchBudgetLimits, addBudgetLimit, deleteBudgetLimit, fetchTransactions } from '@/lib/supabase/data';
 import type { BudgetLimit, CurrencyCode, Transaction } from '@/lib/types';
+import { EXPENSE_CATEGORIES } from '@/lib/categories';
 import { convertCurrency, formatCurrencyAmount, REFERENCE_CURRENCY, SUPPORTED_CURRENCIES } from '@/lib/currency';
 
-const CATEGORIES = [
-  'Wohnen', 'Lebensmittel', 'Transport', 'Versicherung', 'Gesundheit',
-  'Bildung', 'Freizeit', 'Kleidung', 'Essen gehen', 'Sonstiges',
-];
+const CATEGORIES: readonly string[] = EXPENSE_CATEGORIES;
 
 const CHART_COLORS = ['hsl(var(--primary))', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b'];
 
